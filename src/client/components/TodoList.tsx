@@ -1,6 +1,7 @@
 import type { SVGProps } from 'react'
 
 import * as Checkbox from '@radix-ui/react-checkbox'
+import { useAutoAnimate } from '@formkit/auto-animate/react'
 
 import { api } from '@/utils/client/api'
 
@@ -63,28 +64,92 @@ import { api } from '@/utils/client/api'
  *  - https://auto-animate.formkit.com
  */
 
-export const TodoList = () => {
+interface TodoListProps {
+  filterStatus: 'all' | 'pending' | 'completed'
+}
+
+export const TodoList: React.FC<TodoListProps> = ({ filterStatus }) => {
   const { data: todos = [] } = api.todo.getAll.useQuery({
     statuses: ['completed', 'pending'],
   })
 
-  return (
-    <ul className="grid grid-cols-1 gap-y-3">
-      {todos.map((todo) => (
-        <li key={todo.id}>
-          <div className="flex items-center rounded-12 border border-gray-200 px-4 py-3 shadow-sm">
-            <Checkbox.Root
-              id={String(todo.id)}
-              className="flex h-6 w-6 items-center justify-center rounded-6 border border-gray-300 focus:border-gray-700 focus:outline-none data-[state=checked]:border-gray-700 data-[state=checked]:bg-gray-700"
-            >
-              <Checkbox.Indicator>
-                <CheckIcon className="h-4 w-4 text-white" />
-              </Checkbox.Indicator>
-            </Checkbox.Root>
+  const apiContext = api.useContext()
 
-            <label className="block pl-3 font-medium" htmlFor={String(todo.id)}>
-              {todo.body}
-            </label>
+  const [listTodoRef] = useAutoAnimate<HTMLUListElement>()
+
+  const filteredTodos = (() => {
+    if (filterStatus === 'all') {
+      return todos
+    }
+    return todos.filter((todo) => todo.status === filterStatus)
+  })()
+
+  const { mutate: updateTodo, isLoading: isUpdatingTodo } =
+    api.todoStatus.update.useMutation({
+      onSuccess: () => {
+        apiContext.todo.getAll.refetch()
+      },
+    })
+
+  const { mutate: deleteTodo } = api.todo.delete.useMutation({
+    onSuccess: () => {
+      apiContext.todo.getAll.refetch()
+    },
+  })
+
+  const handleCheckedStatus = (isCheck: boolean, id: number) => {
+    updateTodo({
+      status: isCheck ? 'completed' : 'pending',
+      todoId: id,
+    })
+  }
+
+  const handleDeleteTodo = (event: React.MouseEvent<SVGSVGElement>) => {
+    const target = event.target as HTMLElement
+    const svgElement = target.closest('svg') as SVGSVGElement | null
+    if (svgElement) {
+      const id = parseInt(svgElement.id)
+      deleteTodo({ id })
+    }
+  }
+  return (
+    <ul className="grid grid-cols-1 gap-y-3" ref={listTodoRef}>
+      {filteredTodos.map((todo) => (
+        <li key={todo.id}>
+          <div
+            className={`flex items-center justify-between ${
+              todo.status === 'completed' && 'bg-gray-200'
+            } rounded-12 border border-gray-200 px-4 py-3 shadow-sm`}
+          >
+            <div className="flex">
+              <Checkbox.Root
+                id={String(todo.id)}
+                disabled={isUpdatingTodo}
+                defaultChecked={todo.status === 'completed' && true}
+                onCheckedChange={(e: boolean) =>
+                  handleCheckedStatus(e, todo.id)
+                }
+                className="flex h-6 w-6 items-center justify-center rounded-6 border border-gray-300 focus:border-gray-700 focus:outline-none data-[state=checked]:border-gray-700 data-[state=checked]:bg-gray-700"
+              >
+                <Checkbox.Indicator>
+                  <CheckIcon className="h-6 w-6 text-white" />
+                </Checkbox.Indicator>
+              </Checkbox.Root>
+
+              <label
+                className={`block pl-3 font-medium ${
+                  todo.status === 'completed' && 'line-through'
+                }`}
+                htmlFor={String(todo.id)}
+              >
+                {todo.body}
+              </label>
+            </div>
+            <XMarkIcon
+              className="h-4 w-4"
+              id={String(todo.id)}
+              onClick={handleDeleteTodo}
+            />
           </div>
         </li>
       ))}
